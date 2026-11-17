@@ -1,8 +1,13 @@
 # MyTechKB
 
-**Personal AI Knowledge Base for Technical Revision** — Add YouTube playlists, YouTube videos, web articles, PDFs, and images; ask questions and revise with **strict grounding** and **clickable timestamp/page citations**.
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-00c7b7?style=for-the-badge&logo=render&logoColor=white)](https://mytechkb.onrender.com)
+[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20Store-FF6F00?style=for-the-badge)](https://trychroma.com)
 
-Built with **LangChain**, **ChromaDB** ($0 persistent vector database), and **FastAPI**.
+**🌐 Live Public URL:** **[https://mytechkb.onrender.com](https://mytechkb.onrender.com)**
+
+**Personal AI Knowledge Base for Technical Revision** — Add YouTube playlists, YouTube videos, web articles, PDFs, and images; ask questions and revise with **strict grounding**, **hybrid search (HNSW + BM25)**, **visual Mermaid architecture diagrams**, and **clickable timestamp/page citations**. Built with **LangChain**, **ChromaDB** ($0 persistent vector database), and **FastAPI**.
 
 ---
 
