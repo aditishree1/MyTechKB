@@ -67,13 +67,13 @@ class TestMultiTenancy(unittest.TestCase):
         self.assertFalse(verify_password("", h1))
 
     def test_token_signing_and_verification(self) -> None:
-        payload = {"type": "user", "user_id": "usr_abc123", "username": "aditi"}
+        payload = {"type": "user", "user_id": "usr_abc123", "username": "demo_user"}
         token = sign_token(payload, self.secret)
 
         decoded = verify_token(token, self.secret)
         self.assertIsNotNone(decoded)
         self.assertEqual(decoded["user_id"], "usr_abc123")
-        self.assertEqual(decoded["username"], "aditi")
+        self.assertEqual(decoded["username"], "demo_user")
 
         # Wrong secret fails
         self.assertIsNone(verify_token(token, "wrong-secret"))
@@ -89,13 +89,13 @@ class TestMultiTenancy(unittest.TestCase):
         auth_db = AuthDB(self.db_path)
 
         # Register user
-        user = auth_db.create_user("Aditi", "securePass123")
-        self.assertEqual(user.username, "aditi")  # normalized to lowercase
+        user = auth_db.create_user("DemoUser", "securePass123")
+        self.assertEqual(user.username, "demouser")  # normalized to lowercase
         self.assertTrue(user.id)
 
         # Duplicate username must fail
         with self.assertRaises(ValueError):
-            auth_db.create_user("aditi", "anotherPass")
+            auth_db.create_user("demouser", "anotherPass")
 
         # Validation rules
         with self.assertRaises(ValueError):
@@ -105,11 +105,11 @@ class TestMultiTenancy(unittest.TestCase):
             auth_db.create_user("validuser", "123")  # too short password (<6)
 
         # Authentication
-        auth_success = auth_db.authenticate_user("aditi", "securePass123")
+        auth_success = auth_db.authenticate_user("demouser", "securePass123")
         self.assertIsNotNone(auth_success)
         self.assertEqual(auth_success.id, user.id)
 
-        auth_fail = auth_db.authenticate_user("aditi", "wrongPassword")
+        auth_fail = auth_db.authenticate_user("demouser", "wrongPassword")
         self.assertIsNone(auth_fail)
 
         auth_missing = auth_db.authenticate_user("nonexistent", "securePass123")
@@ -212,21 +212,21 @@ class TestMultiTenancy(unittest.TestCase):
         self.assertEqual(guest_me["tenant_type"], "guest")
         self.assertTrue(guest_me["collection"].startswith("kb_guest_"))
 
-        # 2. Register user Aditi
+        # 2. Register user
         res_reg = client.post(
             "/auth/register",
-            json={"username": "aditi_unique", "password": "password123"},
+            json={"username": "test_user_unique", "password": "password123"},
         )
         self.assertEqual(res_reg.status_code, 200, res_reg.json() if res_reg.status_code != 200 else None)
         self.assertTrue(res_reg.json()["ok"])
-        self.assertEqual(res_reg.json()["user"]["username"], "aditi_unique")
+        self.assertEqual(res_reg.json()["user"]["username"], "test_user_unique")
 
         # Check /auth/me after registration
-        res_me_aditi = client.get("/auth/me")
-        aditi_me = res_me_aditi.json()
-        self.assertTrue(aditi_me["authenticated"])
-        self.assertEqual(aditi_me["username"], "aditi_unique")
-        self.assertTrue(aditi_me["collection"].startswith("kb_user_"))
+        res_me_user = client.get("/auth/me")
+        user_me = res_me_user.json()
+        self.assertTrue(user_me["authenticated"])
+        self.assertEqual(user_me["username"], "test_user_unique")
+        self.assertTrue(user_me["collection"].startswith("kb_user_"))
 
         # 3. Log out -> back to fresh guest sandbox
         res_logout = client.post("/auth/logout")
@@ -238,40 +238,40 @@ class TestMultiTenancy(unittest.TestCase):
         self.assertFalse(guest2_me["authenticated"])
         self.assertEqual(guest2_me["tenant_type"], "guest")
 
-        # 4. Log in again as Aditi
+        # 4. Log in again
         res_login = client.post(
             "/auth/login",
-            json={"username": "aditi_unique", "password": "password123"},
+            json={"username": "test_user_unique", "password": "password123"},
         )
         self.assertEqual(res_login.status_code, 200)
         self.assertTrue(res_login.json()["ok"])
 
-        res_me_aditi_again = client.get("/auth/me")
-        self.assertTrue(res_me_aditi_again.json()["authenticated"])
-        self.assertEqual(res_me_aditi_again.json()["collection"], aditi_me["collection"])
+        res_me_user_again = client.get("/auth/me")
+        self.assertTrue(res_me_user_again.json()["authenticated"])
+        self.assertEqual(res_me_user_again.json()["collection"], user_me["collection"])
 
-        # 5. Ingest mock article into Aditi's workspace
+        # 5. Ingest mock article into user's workspace
         with patch("mytechkb.api.app.ingest_url") as mock_ingest:
             from mytechkb.models import SourceInfo
             mock_ingest.return_value = SourceInfo(
-                source_id="src_aditi_rag",
+                source_id="src_user_rag",
                 source_type="web",
-                title="Aditi's Advanced RAG Guide",
-                locator="https://aditi.dev/rag",
+                title="Advanced RAG Architecture Guide",
+                locator="https://example.internal/rag",
                 chunk_count=12,
                 ingested_at="2026-11-06T12:00:00Z",
             )
-            res_ingest = client.post("/ingest/url", data={"url": "https://aditi.dev/rag"})
+            res_ingest = client.post("/ingest/url", data={"url": "https://example.internal/rag"})
             self.assertEqual(res_ingest.status_code, 200)
             self.assertTrue(res_ingest.json()["ok"])
 
-        # 6. Aditi sees her source in /sources
+        # 6. User sees source in /sources
         with patch("mytechkb.store.chroma_store.ChromaKnowledgeStore.list_sources") as mock_list:
             mock_list.return_value = [mock_ingest.return_value]
             res_sources = client.get("/sources")
             self.assertEqual(res_sources.status_code, 200)
             self.assertEqual(len(res_sources.json()["sources"]), 1)
-            self.assertEqual(res_sources.json()["sources"][0]["source_id"], "src_aditi_rag")
+            self.assertEqual(res_sources.json()["sources"][0]["source_id"], "src_user_rag")
 
         # 7. Logout to guest and verify isolated guest collection is queried
         res_logout2 = client.post("/auth/logout")
