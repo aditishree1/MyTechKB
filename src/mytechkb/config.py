@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Multi-tenancy & Authentication
     session_secret: str = "mytechkb-super-secret-key-change-in-production"
 
+    # Cloud Deployment & Proxy Support
+    youtube_proxy: str = ""
+    render_external_url: str = ""
+
     @property
     def auth_db_path(self) -> Path:
         return self.data_dir / "auth.db"

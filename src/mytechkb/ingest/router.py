@@ -42,7 +42,7 @@ def ingest_url(
     if not cleaned:
         raise ValueError("URL is required")
     if is_youtube_url(cleaned):
-        documents = load_youtube(cleaned)
+        documents = load_youtube(cleaned, proxy=settings.youtube_proxy)
     elif is_youtube_playlist_url(cleaned):
         # Pure playlist URL passed to single-URL endpoint — ingest all videos
         # and return the first indexed SourceInfo.
@@ -106,7 +106,7 @@ def ingest_playlist(
         return
 
     try:
-        playlist_gen = load_youtube_playlist(cleaned)
+        playlist_gen = load_youtube_playlist(cleaned, proxy=settings.youtube_proxy)
         sources: list[SourceInfo] = []
         persisted_ids: set[str] = set()
 

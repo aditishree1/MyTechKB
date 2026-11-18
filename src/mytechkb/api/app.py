@@ -1,10 +1,15 @@
 """FastAPI application — routes for ingestion, chat, and source management."""
 
+import asyncio
+from contextlib import asynccontextmanager
 import json
+import logging
+import os
 import shutil
 import uuid
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -55,9 +60,44 @@ def get_current_tenant(request: Request) -> TenantContext:
     )
 
 
+logger = logging.getLogger(__name__)
+
+
+async def _render_keep_alive_task(public_url: str) -> None:
+    """Periodically ping public health endpoint to prevent Render free-tier cold sleep."""
+    health_url = f"{public_url.rstrip('/')}/health"
+    logger.info("Keep-alive task active for %s", health_url)
+    await asyncio.sleep(45)  # initial boot grace period
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(health_url)
+                logger.debug("Keep-alive self-ping: %s", res.status_code)
+        except Exception as exc:
+            logger.debug("Keep-alive self-ping failed: %s", exc)
+        await asyncio.sleep(540)  # every 9 minutes (Render sleeps at 15m)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
-    app = FastAPI(title="MyTechKB", version="0.3.0")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        target_url = (
+            app_settings.render_external_url
+            or os.getenv("RENDER_EXTERNAL_URL", "")
+            or os.getenv("APP_PUBLIC_URL", "")
+        ).strip()
+        task = None
+        if target_url:
+            task = asyncio.create_task(_render_keep_alive_task(target_url))
+        try:
+            yield
+        finally:
+            if task:
+                task.cancel()
+
+    app = FastAPI(title="MyTechKB", version="0.3.0", lifespan=lifespan)
 
     # ── Tenant Context Middleware ────────────────────────────
 

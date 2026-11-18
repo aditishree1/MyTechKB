@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import Generator
 
@@ -65,18 +66,52 @@ def _snippet_duration(item: object) -> float:
     return 0.0
 
 
-def _fetch_transcript(video_id: str) -> list[object]:
-    """Fetch the transcript for *video_id*, supporting API v1 & v2."""
-    api = YouTubeTranscriptApi()
-    if hasattr(api, "fetch"):
-        fetched = api.fetch(video_id)
-        return list(fetched)
-    get_transcript = getattr(YouTubeTranscriptApi, "get_transcript", None)
-    if get_transcript is None:
-        raise RuntimeError(
-            "youtube-transcript-api does not expose fetch or get_transcript"
-        )
-    return list(get_transcript(video_id))
+def _get_proxy_config(proxy_url: str | None = None):
+    p = (proxy_url or os.getenv("YOUTUBE_PROXY", "")).strip()
+    if not p:
+        return None
+    try:
+        from youtube_transcript_api.proxies import GenericProxyConfig
+
+        return GenericProxyConfig(http_url=p, https_url=p)
+    except Exception as exc:
+        logger.warning("Could not construct GenericProxyConfig: %s", exc)
+        return None
+
+
+def _fetch_transcript(video_id: str, proxy: str | None = None) -> list[object]:
+    """Fetch the transcript for *video_id*, supporting API v1 & v2 and optional proxies."""
+    proxy_cfg = _get_proxy_config(proxy)
+    api = (
+        YouTubeTranscriptApi(proxy_config=proxy_cfg)
+        if proxy_cfg
+        else YouTubeTranscriptApi()
+    )
+
+    try:
+        if hasattr(api, "fetch"):
+            fetched = api.fetch(video_id)
+            return list(fetched)
+        get_transcript = getattr(YouTubeTranscriptApi, "get_transcript", None)
+        if get_transcript is None:
+            raise RuntimeError(
+                "youtube-transcript-api does not expose fetch or get_transcript"
+            )
+        return list(get_transcript(video_id))
+    except Exception as exc:
+        exc_type = type(exc).__name__
+        err_str = str(exc).lower()
+        if (
+            "ipblocked" in exc_type.lower()
+            or "requestblocked" in exc_type.lower()
+            or "blocking requests" in err_str
+        ):
+            raise ValueError(
+                "YouTube is blocking requests from this cloud server IP (datacenter block). "
+                "To resolve on Render, set YOUTUBE_PROXY in Render Environment Variables (e.g. free from Webshare.io), "
+                "or upload a PDF/article, or test YouTube links on your local instance."
+            ) from exc
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +290,11 @@ def fetch_playlist_video_ids(playlist_url: str) -> list[dict]:
 # Single-video loader
 # ---------------------------------------------------------------------------
 
-def load_youtube(url: str, title_override: str | None = None) -> list[ExtractedDocument]:
+def load_youtube(
+    url: str,
+    title_override: str | None = None,
+    proxy: str | None = None,
+) -> list[ExtractedDocument]:
     """Load transcript snippets for a single YouTube video.
 
     Each transcript segment becomes one :class:`ExtractedDocument`.  Metadata
@@ -267,7 +306,7 @@ def load_youtube(url: str, title_override: str | None = None) -> list[ExtractedD
         raise ValueError("Not a YouTube URL")
 
     try:
-        snippets = _fetch_transcript(video_id)
+        snippets = _fetch_transcript(video_id, proxy=proxy)
     except (TranscriptsDisabled, VideoUnavailable) as exc:
         raise ValueError(f"Could not load YouTube transcript: {exc}") from exc
     except Exception as exc:
@@ -323,6 +362,7 @@ def load_youtube(url: str, title_override: str | None = None) -> list[ExtractedD
 
 def load_youtube_playlist(
     playlist_url: str,
+    proxy: str | None = None,
 ) -> Generator[dict, None, list[ExtractedDocument]]:
     """Load every video in a YouTube playlist.
 
@@ -356,6 +396,7 @@ def load_youtube_playlist(
             docs = load_youtube(
                 f"https://www.youtube.com/watch?v={vid_id}",
                 title_override=title if not title.startswith("YouTube ") else None,
+                proxy=proxy,
             )
             all_docs.extend(docs)
             yield {
