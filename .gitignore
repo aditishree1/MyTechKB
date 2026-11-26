@@ -12,3 +12,5 @@ wheels/
 # Local runtime
 .env
 data/
+docs/
+.DS_Store
